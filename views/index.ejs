@@ -1,0 +1,47 @@
+<!-- views/index.ejs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Recommendation Site</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Game Recommendation Site</h1>
+        <nav>
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+            <a href="/admin">Admin</a>
+            <a href="/advanced-search">Advanced Search</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <form action="/search" method="GET">
+            <input type="text" name="searchTerm" placeholder="Search for a game..." style="width: 400px;">
+            <button type="submit">Search</button>
+        </form>
+        <h2>Recommended Games</h2>
+        <div class="game-list">
+            <% if (featuredGames.length > 0) { %>
+                <% featuredGames.forEach(game => { %>
+                    <div class="game-item">
+                        <h3><a href="/game/<%= game.id %>"><%= game.title %></a></h3>
+                        <p><strong>Genre:</strong> <%= game.genre %></p>
+                        <p><strong>Release Date:</strong> <%= game.release_date %></p>
+                        <p><strong>Platform:</strong> <%= game.platform %></p>
+                        <p><strong>Information:</strong> <%= game.information %></p>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p>No featured games available at the moment.</p>
+            <% } %>
+        </div>
+    </main>
+    <footer>
+        <p>Game Recommendation Site</p>
+    </footer>
+</body>
+</html>

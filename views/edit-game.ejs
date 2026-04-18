@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Game</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Edit Game</h1>
+        <nav>
+            <a href="/admin">Back to Admin Panel</a>
+        </nav>
+    </header>
+    <main>
+        <form action="/admin/edit-game/<%= game.id %>" method="POST">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" value="<%= game.title %>" required>
+            <label for="genre">Genre:</label>
+            <input type="text" id="genre" name="genre" value="<%= game.genre %>" required>
+            <label for="release_date">Release Date:</label>
+            <input type="date" id="release_date" name="release_date" value="<%= game.release_date %>" required>
+            <label for="platform">Platform:</label>
+            <input type="text" id="platform" name="platform" value="<%= game.platform %>" required>
+            <label for="information">Information:</label>
+            <textarea id="information" name="information"><%= game.information %></textarea>
+            <button type="submit">Update Game</button>
+        </form>
+    </main>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!-- views/register.ejs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/styles.css">
+    <title>Register</title>
+</head>
+<body>
+    <header>
+        <h1>Register</h1>
+    </header>
+    <main>
+        <% if (typeof message !== 'undefined' && message) { %>
+            <div class="alert-message"><%= message %></div>
+        <% } %>
+        <form action="/register" method="POST" class="stacked-form">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+    
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+    
+            <label for="confirm_password">Confirm Password:</label>
+            <input type="password" id="confirm_password" name="confirm_password" required>
+    
+            <button type="submit">Register</button>
+        </form>
+        <p>Already have an account? <a href="/login">Login here</a></p>
+    </main>
+</body>
+</html>

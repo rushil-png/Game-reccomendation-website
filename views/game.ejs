@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= game.title %></title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1><%= game.title %></h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/logout">Logout</a>
+            <a href="/advanced-search">Advanced Search</a>
+        </nav>
+    </header>
+    <main>
+        <div class="game-details">
+            <h2>Game Details</h2>
+            <div class="game-info">
+                <p><strong>Genre:</strong> <%= game.genre %></p>
+                <p><strong>Release Date:</strong> <%= game.release_date %></p>
+                <p><strong>Platform:</strong> <%= game.platform %></p>
+                <p><strong>Information:</strong> <%= game.information %></p>
+            </div>
+        </div>
+
+        <div class="reviews-section">
+            <h2>Reviews</h2>
+            <div class="reviews">
+                <% if (reviews.length > 0) { %>
+                    <% reviews.forEach(review => { %>
+                        <div class="review-item">
+                            <!-- Show username instead of user_id, no date -->
+                            <p><strong><%= review.username %></strong></p>
+                            <p><%= review.text %></p>
+                            <% if (review.user_id === userId || isAdmin) { %>
+                                <form action="/review/delete/<%= review.id %>" method="POST" style="display:inline;">
+                                    <input type="hidden" name="gameId" value="<%= game.id %>">
+                                    <button type="submit" class="delete-review-button">Delete Review</button>
+                                </form>
+                            <% } %>
+                        </div>
+                    <% }) %>
+                <% } else { %>
+                    <p>No reviews yet.</p>
+                <% } %>
+            </div>
+
+            <!-- Only show review form if user is logged in -->
+            <% if (userId) { %>
+                <h2>Leave a Review</h2>
+                <form action="/game/<%= game.id %>/review" method="POST" class="review-form">
+                    <textarea name="review" required placeholder="Write your review here..."></textarea>
+                    <button type="submit">Submit Review</button>
+                </form>
+            <% } else { %>
+                <p><a href="/login">Log in</a> to leave a review.</p>
+            <% } %>
+        </div>
+
+        <h2>Featured Games</h2>
+        <div class="game-list">
+            <% if (featuredGames.length > 0) { %>
+                <% featuredGames.forEach(featuredGame => { %>
+                    <div class="game-item">
+                        <h3><a href="/game/<%= featuredGame.id %>"><%= featuredGame.title %></a></h3>
+                        <p><strong>Genre:</strong> <%= featuredGame.genre %></p>
+                        <p><strong>Release Date:</strong> <%= featuredGame.release_date %></p>
+                        <p><strong>Platform:</strong> <%= featuredGame.platform %></p>
+                        <p><strong>Information:</strong> <%= featuredGame.information %></p>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p>No featured games available at the moment.</p>
+            <% } %>
+        </div>
+    </main>
+    <footer>
+        <p>&copy; Game Recommendation Site</p>
+    </footer>
+</body>
+</html>

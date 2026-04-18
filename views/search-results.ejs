@@ -1,0 +1,54 @@
+<!-- views/search-results.ejs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Search Results</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+            <a href="/admin">Admin</a>
+            <a href="/advanced-search">Advanced Search</a>
+        </nav>
+    </header>
+    <main>
+        <h2>Search Results for "<%= searchTerm %>"</h2>
+<% if (games.length > 0) { %>
+    <div class="game-list">
+        <% games.forEach(game => { %>
+            <div class="game-item">
+                <h3><a href="/game/<%= game.id %>"><%= game.title %></a></h3>
+                <p><strong>Genre:</strong> <%= game.genre %></p>
+                <p><strong>Platform:</strong> <%= game.platform %></p>
+            </div>
+        <% }) %>
+    </div>
+<% } else { %>
+    <p>No games found.</p>
+<% } %>
+
+<% if (recommendedGames.length > 0) { %>
+    <h2>Games You Might Like</h2>
+    <div class="game-list">
+        <% recommendedGames.forEach(game => { %>
+            <div class="game-item">
+                <h3><a href="/game/<%= game.id %>"><%= game.title %></a></h3>
+                <p><strong>Genre:</strong> <%= game.genre %></p>
+                <p><strong>Platform:</strong> <%= game.platform %></p>
+            </div>
+        <% }) %>
+    </div>
+<% } %>
+    </main>
+    <footer>
+        <p>Game Recommendation Site</p>
+    </footer>
+</body>
+</html>

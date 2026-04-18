@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Admin Panel</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/logout">Logout</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <h2>Add a New Game</h2>
+        <form action="/admin/add-game" method="POST">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" required>
+            <label for="genre">Genre:</label>
+            <input type="text" id="genre" name="genre" required>
+            <label for="release_date">Release Date:</label>
+            <input type="date" id="release_date" name="release_date" required>
+            <label for="platform">Platform:</label>
+            <input type="text" id="platform" name="platform" required>
+            <label for="information">Information:</label>
+            <textarea id="information" name="information"></textarea>
+            <button type="submit">Add Game</button>
+        </form>
+
+        <h2>All Games</h2>
+        <div class="game-list">
+            <% if (games && games.length > 0) { %>
+                <% games.forEach(game => { %>
+                    <div class="game-item">
+                        <h3><%= game.title %></h3>
+                        <p><strong>Genre:</strong> <%= game.genre %></p>
+                        <p><strong>Release Date:</strong> <%= game.release_date %></p>
+                        <p><strong>Platform:</strong> <%= game.platform %></p>
+                        <p><strong>Information:</strong> <%= game.information %></p>
+                        <a href="/admin/edit-game/<%= game.id %>" class="edit-game-link">Edit Game</a>
+                        <form action="/admin/delete-game/<%= game.id %>" method="POST" style="display:inline;">
+                            <button type="submit" onclick="return confirm('Are you sure you want to delete this game?');">Delete Game</button>
+                        </form>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p>No games available.</p>
+            <% } %>
+        </div>
+
+        <h2>Deleted Games</h2>
+        <div class="deleted-game-list">
+            <% if (deletedGames && deletedGames.length > 0) { %>
+                <% deletedGames.forEach(game => { %>
+                    <div class="deleted-game-item">
+                        <h3><%= game.title %></h3>
+                        <form action="/admin/restore-game/<%= game.id %>" method="POST" style="display:inline;">
+                            <button type="submit">Restore Game</button>
+                        </form>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p>No deleted games available.</p>
+            <% } %>
+        </div>
+
+        <h2>All Users</h2>
+        <div class="user-list">
+            <% if (users && users.length > 0) { %>
+                <% users.forEach(user => { %>
+                    <div class="user-item">
+                        <h3><%= user.username %></h3>
+                        <form action="/admin/delete-user/<%= user.id %>" method="POST" style="display:inline;">
+                            <button type="submit" onclick="return confirm('Are you sure you want to delete this user?');">Delete User</button>
+                        </form>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p>No users available.</p>
+            <% } %>
+        </div>
+    </main>
+    <footer>
+        <p>&copy; Game Recommendation Site</p>
+    </footer>
+</body>
+</html>

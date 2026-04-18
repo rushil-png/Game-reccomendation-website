@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>User Profile</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+            <a href="/admin">Admin</a>
+            <a href="/advanced-search">Advanced Search</a>
+        </nav>
+    </header>
+    <main>
+        <h2>Your Played Games</h2>
+        <ul>
+            <% userGames.forEach(game => { %>
+                <li>
+                    <strong><%= game.title %></strong> (<%= game.genre %>)
+                    - Liked: <%= game.liked ? 'Yes' : 'No' %>
+                    <form action="/profile/delete-game/<%= game.game_id %>" method="POST" style="display:inline;">
+                        <button type="submit" onclick="return confirm('Remove this game from your profile?');">Delete</button>
+                    </form>
+                </li>
+            <% }) %>
+        </ul>
+        <h2>Your Gaming Profile</h2>
+        <p>
+            <% if (userGames.length > 0) { %>
+                Based on your gaming history, you are a <%= gamingProfile %> gamer.
+            <% } else { %>
+                You haven't added any games to your profile yet.
+            <% } %>
+        </p>
+        
+        <h2>Add a Game to Your Profile</h2>
+        <form action="/profile/add-game" method="POST">
+            <input type="text" name="gameName" placeholder="Enter game name" required>
+            <input type="checkbox" name="liked" value="1"> Liked
+            <button type="submit">Add Game</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; Game Recommendation Site</p>
+    </footer>
+</body>
+</html>

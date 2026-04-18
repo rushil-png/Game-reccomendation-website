@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Search</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Advanced Search</h1>
+    </header>
+    <main>
+        <form action="/advanced-search" method="POST" class="stacked-form">
+            <label for="searchTerm">Game Title (optional):</label>
+            <input type="text" id="searchTerm" name="searchTerm" placeholder="Search for a game...">
+
+            <label for="genre">Genre:</label>
+            <select name="genre" id="genre">
+                <option value="">Any Genre</option>
+                <option value="Action">Action</option>
+                <option value="Adventure">Adventure</option>
+                <option value="RPG">RPG</option>
+                <option value="Simulation">Simulation</option>
+                <option value="Strategy">Strategy</option>
+                <option value="Sports">Sports</option>
+            </select>
+
+            <label for="platform">Platform:</label>
+            <select name="platform" id="platform">
+                <option value="">Any Platform</option>
+                <option value="PC">PC</option>
+                <option value="PS5">PS5</option>
+                <option value="Xbox">Xbox</option>
+                <option value="Switch">Switch</option>
+                <option value="Mobile">Mobile</option>
+            </select>
+
+            <label for="releaseDate">Released After:</label>
+            <input type="date" id="releaseDate" name="releaseDate">
+
+            <button type="submit">Search</button>
+        </form>
+        <a href="/">Back to Home</a>
+    </main>
+    <footer>
+        <p>Game Recommendation Site</p>
+    </footer>
+</body>
+</html>
