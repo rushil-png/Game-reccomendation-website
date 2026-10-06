@@ -1,6 +1,7 @@
 // database.js
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('games.db');
+const { Database } = require('./sqlite-compat');
+const bcrypt = require('bcryptjs');
+const db = new Database(require('path').join(__dirname, 'games.db'));
 
 // Function to create tables if they do not exist
 db.serialize(() => {
@@ -43,6 +44,24 @@ db.serialize(() => {
         FOREIGN KEY (game_id) REFERENCES games(id)
     )`);
 
+
+    // One-off cleanup of duplicate game rows (older versions re-seeded on every start).
+    // Keeps the lowest id per title and repoints reviews / likes at it.
+    db.run(`UPDATE reviews SET game_id = (SELECT MIN(g2.id) FROM games g2 WHERE g2.title = (SELECT title FROM games WHERE id = reviews.game_id))`);
+    db.run(`UPDATE user_games SET game_id = (SELECT MIN(g2.id) FROM games g2 WHERE g2.title = (SELECT title FROM games WHERE id = user_games.game_id))`);
+    db.run(`DELETE FROM games WHERE id NOT IN (SELECT MIN(id) FROM games GROUP BY title)`);
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_games_title ON games(title)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_reviews_game ON reviews(game_id)`);
+
+    // Seed starter games (INSERT OR IGNORE, so no more duplicates)
+    require('./addSampleGames.js')(db);
+
+    // Hash any plaintext passwords left over from the old version
+    db.all("SELECT id, password FROM users WHERE password NOT LIKE '$2%'", [], (err, rows) => {
+        (rows || []).forEach(u => {
+            db.run("UPDATE users SET password = ? WHERE id = ?", [bcrypt.hashSync(u.password, 10), u.id]);
+        });
+    });
 });
 
 // Export the database object for use in other files
