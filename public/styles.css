@@ -157,3 +157,10 @@ footer {
     bottom: 0;
     width: 100%;
 }
+
+
+.live-status {
+    font-size: 0.85rem;
+    color: #2e7d32;
+    margin: 0 0 10px;
+}
