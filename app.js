@@ -3,27 +3,28 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const path = require('path');
 const db = require('./database');
+const http = require('http');
+const os = require('os');
+const bcrypt = require('bcryptjs');
+const { Server } = require('socket.io');
 const app = express();
-const PORT = process.env.PORT || 3000; 
-
-app.listen(PORT, (err) => {
-    if (err) {
-        console.error('Failed to start server:', err);
-    } else {
-        console.log('Server is running on port ' + PORT);
-    }
-    console.log(`Access the server at http://localhost:${PORT}`);
-});
+const server = http.createServer(app);
+const io = new Server(server);
+const PORT = process.env.PORT || 3000;
 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(session({
+const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET || 'your_secret_key',
     resave: false,
-    saveUninitialized: true
-}));
+    saveUninitialized: false
+});
+app.use(sessionMiddleware);
+
+// Share the login session with Socket.IO so sockets know who is connected
+io.engine.use(sessionMiddleware);
 
 // Middleware to check if user is logged in
 function isAuthenticated(req, res, next) {
@@ -46,7 +47,7 @@ app.get('/', (req, res) => {
 //search
 app.post('/search', (req, res) => {
     const searchTerm = req.body.searchTerm;
-    db.all("SELECT * FROM games WHERE title LIKE ?", [`%${searchTerm}%`], (err, games) => {
+    db.all("SELECT * FROM games WHERE deleted = 0 AND title LIKE ?", [`%${searchTerm}%`], (err, games) => {
         if (err) {
             return res.status(500).send("Error searching for games.");
         }
@@ -62,17 +63,12 @@ app.get('/login', (req, res) => {
 // Login Handler
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    db.get("SELECT * FROM users WHERE username = ? AND password = ?", [username, password], (err, row) => {
-        if (row) {
-            req.session.user = {
-                id: row.id,
-                username: row.username,
-                isAdmin: row.isAdmin === 1
-            };
-            res.redirect('/');
-        } else {
-            res.render('login', { message: "Invalid username or password." });
+    db.get("SELECT * FROM users WHERE username = ?", [username], (err, row) => {
+        if (!row || !bcrypt.compareSync(String(password || ''), row.password)) {
+            return res.render('login', { message: "Invalid username or password." });
         }
+        req.session.user = { id: row.id, username: row.username, isAdmin: row.isAdmin === 1 };
+        res.redirect('/');
     });
 });
 
@@ -108,7 +104,7 @@ app.post('/register', (req, res) => {
         const isAdmin = username === '23shahr2';
 
         const stmt = db.prepare("INSERT INTO users (username, password, isAdmin) VALUES (?, ?, ?)");
-        stmt.run(username, password, isAdmin ? 1 : 0, function(err) {
+        stmt.run(username, bcrypt.hashSync(password, 10), isAdmin ? 1 : 0, function(err) {
             if (err) {
                 return res.render('register', { message: "Error creating account." });
             }
@@ -134,6 +130,7 @@ app.get('/game/:id', (req, res) => {
                 FROM reviews
                 JOIN users ON reviews.user_id = users.id
                 WHERE reviews.game_id = ?
+                ORDER BY reviews.id ASC
             `, [gameId], (err, reviews) => {
                 reviews = reviews || [];
                 const userId = req.session.user ? req.session.user.id : null;
@@ -155,22 +152,28 @@ app.get('/game/:id', (req, res) => {
 
 // Leave a review
 app.post('/game/:id/review', isAuthenticated, (req, res) => {
-    const gameId = req.params.id;
-    const userId = req.session.user.id;
-    const reviewText = req.body.review;
+    const gameId = Number(req.params.id);
+    const user = req.session.user;
+    const reviewText = (req.body.review || '').trim().slice(0, 2000);
+    const wantsJson = (req.get('accept') || '').includes('application/json');
 
     if (!reviewText) {
-        return res.status(400).send("Review text is required.");
+        return wantsJson ? res.status(400).json({ error: 'Review text is required.' })
+                         : res.status(400).send("Review text is required.");
     }
 
     db.run(
         "INSERT INTO reviews (user_id, game_id, text) VALUES (?, ?, ?)",
-        [userId, gameId, reviewText],
+        [user.id, gameId, reviewText],
         function (err) {
             if (err) {
-                return res.status(500).send("Error submitting review.");
+                return wantsJson ? res.status(500).json({ error: 'Error submitting review.' })
+                                 : res.status(500).send("Error submitting review.");
             }
-            res.redirect(`/game/${gameId}`);
+            const review = { id: this.lastID, user_id: user.id, username: user.username, text: reviewText };
+            // Live update for everyone currently viewing this game, on any device
+            io.to(`game:${gameId}`).emit('review:new', review);
+            wantsJson ? res.json(review) : res.redirect(`/game/${gameId}`);
         }
     );
 });
@@ -227,6 +230,9 @@ app.get('/admin', isAuthenticated, (req, res) => {
 
 // Add Game (Admin)
 app.post('/admin/add-game', isAuthenticated, (req, res) => {
+    if (!req.session.user.isAdmin) {
+        return res.status(403).send("You do not have permission to add games.");
+    }
     const { title, genre, release_date, platform, information } = req.body;
     const stmt = db.prepare("INSERT INTO games (title, genre, release_date, platform, information) VALUES (?, ?, ?, ?, ?)");
     stmt.run(title, genre, release_date, platform, information, function(err) {
@@ -243,15 +249,22 @@ app.post('/admin/delete-user/:id', isAuthenticated, (req, res) => {
         return res.status(403).send("You do not have permission to delete users.");
     }
 
-    const userId = req.params.id;
-    const stmt = db.prepare("DELETE FROM users WHERE id = ?");
-    stmt.run(userId, function(err) {
-        if (err) {
-            return res.status(400).send("Error deleting user.");
-        }
-        res.redirect('/admin');
+    const userId = Number(req.params.id);
+    if (userId === req.session.user.id) {
+        return res.status(400).send("You cannot delete your own account.");
+    }
+
+    // Remove the user's reviews and likes first (they reference the user), then the user
+    db.run("DELETE FROM reviews WHERE user_id = ?", [userId], err => {
+        if (err) return res.status(400).send("Error deleting user's reviews.");
+        db.run("DELETE FROM user_games WHERE user_id = ?", [userId], err2 => {
+            if (err2) return res.status(400).send("Error deleting user's data.");
+            db.run("DELETE FROM users WHERE id = ?", [userId], err3 => {
+                if (err3) return res.status(400).send("Error deleting user.");
+                res.redirect('/admin');
+            });
+        });
     });
-    stmt.finalize();
 });
 // Delete game (Admin)
 app.post('/admin/delete-game/:id', isAuthenticated, (req, res) => {
@@ -363,39 +376,39 @@ app.post('/advanced-search', (req, res) => {
 // Leave a Review
 app.post('/review/edit/:id', isAuthenticated, (req, res) => {
     const reviewId = req.params.id;
-    const newReviewText = req.body.newReview;
-
-    const stmt = db.prepare("UPDATE reviews SET text = ? WHERE id = ?");
-    stmt.run(newReviewText, reviewId, function(err) {
-        if (err) {
-            return res.status(400).send("Error editing review.");
+    const newReviewText = (req.body.newReview || '').trim();
+    db.get("SELECT user_id, game_id FROM reviews WHERE id = ?", [reviewId], (err, review) => {
+        if (err || !review) return res.status(400).send("Error finding review.");
+        if (review.user_id !== req.session.user.id && !req.session.user.isAdmin) {
+            return res.status(403).send("You do not have permission to edit this review.");
         }
-        res.redirect(`/game/${req.body.gameId}`);
+        db.run("UPDATE reviews SET text = ? WHERE id = ?", [newReviewText, reviewId], function (err2) {
+            if (err2) return res.status(400).send("Error editing review.");
+            io.to(`game:${review.game_id}`).emit('review:edited', { id: Number(reviewId), text: newReviewText });
+            res.redirect(`/game/${review.game_id}`);
+        });
     });
-    stmt.finalize();
 });
 
 // Delete Review
 app.post('/review/delete/:id', isAuthenticated, (req, res) => {
     const reviewId = req.params.id;
-    const gameId = req.body.gameId;
+    const wantsJson = (req.get('accept') || '').includes('application/json');
 
-    db.get("SELECT user_id FROM reviews WHERE id = ?", [reviewId], (err, review) => {
+    db.get("SELECT user_id, game_id FROM reviews WHERE id = ?", [reviewId], (err, review) => {
         if (err || !review) {
-            return res.status(400).send("Error finding review.");
+            return wantsJson ? res.status(400).json({ error: 'Review not found.' }) : res.status(400).send("Error finding review.");
         }
-        if (review.user_id === req.session.user.id || req.session.user.isAdmin) {
-            const stmt = db.prepare("DELETE FROM reviews WHERE id = ?");
-            stmt.run(reviewId, function(err) {
-                if (err) {
-                    return res.status(400).send("Error deleting review.");
-                }
-                res.redirect(`/game/${gameId}`);
-            });
-            stmt.finalize();
-        } else {
-            res.status(403).send("You do not have permission to delete this review.");
+        if (review.user_id !== req.session.user.id && !req.session.user.isAdmin) {
+            return wantsJson ? res.status(403).json({ error: 'Not allowed.' }) : res.status(403).send("You do not have permission to delete this review.");
         }
+        db.run("DELETE FROM reviews WHERE id = ?", [reviewId], function (err2) {
+            if (err2) {
+                return wantsJson ? res.status(500).json({ error: 'Error deleting review.' }) : res.status(400).send("Error deleting review.");
+            }
+            io.to(`game:${review.game_id}`).emit('review:deleted', { id: Number(reviewId) });
+            wantsJson ? res.json({ ok: true }) : res.redirect(`/game/${review.game_id}`);
+        });
     });
 });
 
@@ -441,8 +454,6 @@ function determineGamingProfile(userGames) {
     }
 }
 
-// Add Sample Games
-require('./addSampleGames.js');
 
 // Profile Page
 app.get('/profile', isAuthenticated, (req, res) => {
@@ -502,4 +513,32 @@ app.post('/profile/delete-game/:gameId', isAuthenticated, (req, res) => {
         }
         res.redirect('/profile');
     });
+});
+
+// ---- Live updates (Socket.IO) ----
+// Each game page joins a room, so comments appear instantly on every open device.
+function viewerCount(room) {
+    return io.sockets.adapter.rooms.get(room)?.size || 0;
+}
+
+io.on('connection', socket => {
+    let joined = null;
+    socket.on('game:join', gameId => {
+        const id = Number(gameId);
+        if (!Number.isInteger(id)) return;
+        joined = `game:${id}`;
+        socket.join(joined);
+        io.to(joined).emit('game:viewers', viewerCount(joined));
+    });
+    socket.on('disconnect', () => {
+        if (joined) io.to(joined).emit('game:viewers', viewerCount(joined));
+    });
+});
+
+// Listen on all network interfaces so phones/tablets on the same Wi-Fi can connect
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running:  http://localhost:${PORT}`);
+    Object.values(os.networkInterfaces()).flat()
+        .filter(i => i && i.family === 'IPv4' && !i.internal)
+        .forEach(i => console.log(`On your network: http://${i.address}:${PORT}`));
 });
