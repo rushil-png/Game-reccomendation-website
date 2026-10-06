@@ -17,7 +17,7 @@ app.listen(PORT, (err) => {
 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your_secret_key',
@@ -281,64 +281,84 @@ app.post('/admin/restore-game/:id', isAuthenticated, (req, res) => {
 });
 
 // Advanced search
+// Platform names in the data are inconsistent ("PS4" vs "PlayStation 4"), so each
+// dropdown choice maps to every spelling that should match it.
+const PLATFORM_OPTIONS = {
+    'PC': ['PC'],
+    'PlayStation 4': ['PS4', 'PlayStation 4'],
+    'PlayStation 5': ['PS5', 'PlayStation 5'],
+    'Xbox': ['Xbox'],
+    'Nintendo Switch': ['Nintendo Switch'],
+    'Mobile': ['Mobile']
+};
+
 app.get('/advanced-search', (req, res) => {
-    res.render('advanced-search');
+    // Build the genre list from the data so every option can actually match something
+    db.all("SELECT DISTINCT genre FROM games WHERE deleted = 0 ORDER BY genre", [], (err, rows) => {
+        const genres = err ? [] : rows.map(r => r.genre);
+        res.render('advanced-search', { genres, platforms: Object.keys(PLATFORM_OPTIONS) });
+    });
 });
 
 app.post('/advanced-search', (req, res) => {
     const { searchTerm, genre, platform, releaseDate } = req.body;
 
-    let sql = 'SELECT * FROM games WHERE 1=1';
+    let sql = 'SELECT * FROM games WHERE deleted = 0';
     const params = [];
 
     if (genre && genre.trim() !== '') {
         sql += ' AND genre = ?';
         params.push(genre);
     }
-    if (platform && platform.trim() !== '') {
-        sql += ' AND platform = ?';
-        params.push(platform);
+    if (platform && PLATFORM_OPTIONS[platform]) {
+        // platform column holds comma-separated lists, so match substrings
+        const likes = PLATFORM_OPTIONS[platform].map(() => 'platform LIKE ?').join(' OR ');
+        sql += ` AND (${likes})`;
+        PLATFORM_OPTIONS[platform].forEach(p => params.push(`%${p}%`));
     }
     if (releaseDate && releaseDate.trim() !== '') {
         sql += ' AND release_date >= ?';
         params.push(releaseDate);
     }
     if (searchTerm && searchTerm.trim() !== '') {
-        sql += ' AND (title LIKE ? OR genre LIKE ? OR platform LIKE ? OR information LIKE ?)';
-        params.push(`%${searchTerm}%`, `%${searchTerm}%`, `%${searchTerm}%`, `%${searchTerm}%`);
+        // Title/description only; searching genre/platform here duplicated the dropdown filters
+        sql += ' AND (title LIKE ? OR information LIKE ?)';
+        params.push(`%${searchTerm.trim()}%`, `%${searchTerm.trim()}%`);
     }
+    sql += ' ORDER BY release_date DESC';
+
+    // Short description of the filters used, shown on the results page
+    const criteria = [];
+    if (searchTerm && searchTerm.trim()) criteria.push(`"${searchTerm.trim()}"`);
+    if (genre) criteria.push(genre);
+    if (platform) criteria.push(platform);
+    if (releaseDate) criteria.push(`released after ${releaseDate}`);
+    const label = criteria.join(', ') || 'all games';
 
     db.all(sql, params, (err, games) => {
         if (err) {
             return res.status(500).send("Error searching for games.");
         }
 
-        // Get recommended games based on search criteria (optional)
-        let recommendedGames = [];
+        const render = recs => res.render('search-results', {
+            games, searchTerm: label, recommendedGames: recs || []
+        });
+
         if (games.length > 0) {
             const genreCounts = {};
-            games.forEach(game => genreCounts[game.genre] = (genreCounts[game.genre] || 0) + 1);
-            const mostCommonGenre = Object.keys(genreCounts).reduce((a, b) => genreCounts[a] > genreCounts[b] ? a : b);
-
-            const gameIds = games.map(g => g.id);
+            games.forEach(g => genreCounts[g.genre] = (genreCounts[g.genre] || 0) + 1);
+            const topGenre = Object.keys(genreCounts).reduce((a, b) => genreCounts[a] > genreCounts[b] ? a : b);
+            const ids = games.map(g => g.id);
             db.all(
-                `SELECT * FROM games WHERE genre = ? AND id NOT IN (${gameIds.map(() => '?').join(',')}) LIMIT 5`,
-                [mostCommonGenre, ...gameIds],
-                (err, recs) => {
-                    recommendedGames = recs || [];
-                    res.render('search-results', { games, searchTerm, recommendedGames });
-                }
+                `SELECT * FROM games WHERE deleted = 0 AND genre = ? AND id NOT IN (${ids.map(() => '?').join(',')}) ORDER BY RANDOM() LIMIT 5`,
+                [topGenre, ...ids],
+                (e, recs) => render(recs)
             );
         } else {
-            db.all("SELECT * FROM games ORDER BY RANDOM() LIMIT 5", [], (err, recs) => {
-                recommendedGames = recs || [];
-                res.render('search-results', { games, searchTerm, recommendedGames });
-            });
+            db.all("SELECT * FROM games WHERE deleted = 0 ORDER BY RANDOM() LIMIT 5", [], (e, recs) => render(recs));
         }
     });
 });
-
-
 
 // Leave a Review
 app.post('/review/edit/:id', isAuthenticated, (req, res) => {
