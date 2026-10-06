@@ -28,13 +28,14 @@
 
         <div class="reviews-section">
             <h2>Reviews</h2>
-            <div class="reviews">
+            <p class="live-status" id="live-status">Connecting…</p>
+            <div class="reviews" id="reviews">
                 <% if (reviews.length > 0) { %>
                     <% reviews.forEach(review => { %>
-                        <div class="review-item">
+                        <div class="review-item" data-id="<%= review.id %>">
                             <!-- Show username instead of user_id, no date -->
                             <p><strong><%= review.username %></strong></p>
-                            <p><%= review.text %></p>
+                            <p class="review-text"><%= review.text %></p>
                             <% if (review.user_id === userId || isAdmin) { %>
                                 <form action="/review/delete/<%= review.id %>" method="POST" style="display:inline;">
                                     <input type="hidden" name="gameId" value="<%= game.id %>">
@@ -44,14 +45,14 @@
                         </div>
                     <% }) %>
                 <% } else { %>
-                    <p>No reviews yet.</p>
+                    <p id="no-reviews">No reviews yet.</p>
                 <% } %>
             </div>
 
             <!-- Only show review form if user is logged in -->
             <% if (userId) { %>
                 <h2>Leave a Review</h2>
-                <form action="/game/<%= game.id %>/review" method="POST" class="review-form">
+                <form action="/game/<%= game.id %>/review" method="POST" class="review-form" id="review-form">
                     <textarea name="review" required placeholder="Write your review here..."></textarea>
                     <button type="submit">Submit Review</button>
                 </form>
@@ -80,5 +81,98 @@
     <footer>
         <p>&copy; Game Recommendation Site</p>
     </footer>
+<script src="/socket.io/socket.io.js"></script>
+    <script>
+        const GAME_ID = <%= game.id %>;
+        const ME = { id: <%= userId ? userId : 'null' %>, isAdmin: <%= isAdmin ? 'true' : 'false' %> };
+        const list = document.getElementById('reviews');
+        const status = document.getElementById('live-status');
+        const socket = io();
+
+        socket.on('connect', () => socket.emit('game:join', GAME_ID));
+        socket.on('disconnect', () => { status.textContent = 'Reconnecting…'; });
+        socket.on('game:viewers', n => {
+            status.textContent = '● Live — ' + n + (n === 1 ? ' person' : ' people') + ' viewing this game';
+        });
+
+        function removeEmptyNotice() {
+            const n = document.getElementById('no-reviews');
+            if (n) n.remove();
+        }
+
+        function addReview(r) {
+            if (list.querySelector('[data-id="' + r.id + '"]')) return; // already shown
+            removeEmptyNotice();
+            const item = document.createElement('div');
+            item.className = 'review-item';
+            item.dataset.id = r.id;
+            const name = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = r.username;
+            name.appendChild(strong);
+            const text = document.createElement('p');
+            text.className = 'review-text';
+            text.textContent = r.text;
+            item.append(name, text);
+            if (ME.id === r.user_id || ME.isAdmin) item.appendChild(makeDeleteButton(r.id));
+            list.appendChild(item);
+        }
+
+        function makeDeleteButton(id) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'delete-review-button';
+            b.textContent = 'Delete Review';
+            b.addEventListener('click', async () => {
+                const res = await fetch('/review/delete/' + id, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'gameId=' + GAME_ID
+                });
+                if (res.ok) removeReview(id);
+            });
+            return b;
+        }
+
+        function removeReview(id) {
+            const el = list.querySelector('[data-id="' + id + '"]');
+            if (el) el.remove();
+            if (!list.querySelector('.review-item')) {
+                const p = document.createElement('p');
+                p.id = 'no-reviews';
+                p.textContent = 'No reviews yet.';
+                list.appendChild(p);
+            }
+        }
+
+        socket.on('review:new', addReview);
+        socket.on('review:deleted', d => removeReview(d.id));
+        socket.on('review:edited', d => {
+            const el = list.querySelector('[data-id="' + d.id + '"] .review-text');
+            if (el) el.textContent = d.text;
+        });
+
+        // Make server-rendered delete forms use the live path too
+        list.querySelectorAll('form[action^="/review/delete/"]').forEach(f => {
+            const id = f.action.split('/').pop();
+            f.replaceWith(makeDeleteButton(id));
+        });
+
+        // Post without a page reload; everyone (including this tab) gets it via the socket
+        const form = document.getElementById('review-form');
+        if (form) {
+            form.addEventListener('submit', async e => {
+                e.preventDefault();
+                const ta = form.querySelector('textarea');
+                const body = new URLSearchParams({ review: ta.value });
+                const res = await fetch(form.action, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body
+                });
+                if (res.ok) { addReview(await res.json()); ta.value = ''; }
+            });
+        }
+    </script>
 </body>
 </html>
